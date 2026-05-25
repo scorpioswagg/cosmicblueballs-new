@@ -558,6 +558,16 @@ function CosmicAppInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  // Scroll to active report once it's rendered
+  useEffect(() => {
+    if (activeReport) {
+      const t = setTimeout(() => {
+        document.getElementById('active-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [activeReport]);
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => d.user && setUser(d.user)).catch(() => {});
     fetch('/api/report-types').then(r => r.json()).then(d => { setReportTypes(d.reports || []); setBundle(d.bundle); });
@@ -617,7 +627,6 @@ function CosmicAppInner() {
       if (!r.ok) throw new Error(d.error);
       setActiveReport({ ...d, createdAt: new Date() });
       toast.success('Your reading is ready ✨');
-      setTimeout(() => document.getElementById('active-report')?.scrollIntoView({ behavior: 'smooth' }), 200);
     } catch (err) { toast.error('Failed: ' + err.message); }
     setGenerating(false);
   }

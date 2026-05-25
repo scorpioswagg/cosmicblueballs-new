@@ -55,12 +55,33 @@ function jsonErr(msg, status = 400) {
 async function handleGeocode(body) {
   const location = (body.location || '').trim();
   if (!location) return jsonErr('location is required');
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=5&addressdetails=1`;
+
+  // Primary: Open-Meteo geocoding (free, no key, no rate limit)
   try {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=5&language=en&format=json`;
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const data = await resp.json();
+      const results = (data?.results || []).map((r) => ({
+        display_name: [r.name, r.admin1, r.country].filter(Boolean).join(', '),
+        lat: r.latitude,
+        lng: r.longitude,
+        city: r.name,
+        country: r.country,
+      }));
+      if (results.length > 0) return jsonOk({ results, source: 'open-meteo' });
+    }
+  } catch (e) {
+    console.warn('[geocode] open-meteo failed, falling back:', e.message);
+  }
+
+  // Fallback: Nominatim
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=5&addressdetails=1`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'CosmicBlueprint/1.0 (contact: admin@cosmicblueprint.com)' },
     });
-    if (!resp.ok) return jsonErr('geocoding failed', 502);
+    if (!resp.ok) return jsonOk({ results: [], source: 'nominatim-failed' });
     const data = await resp.json();
     const results = (data || []).map((r) => ({
       display_name: r.display_name,
@@ -69,9 +90,9 @@ async function handleGeocode(body) {
       city: r.address?.city || r.address?.town || r.address?.village || r.address?.county || '',
       country: r.address?.country || '',
     }));
-    return jsonOk({ results });
+    return jsonOk({ results, source: 'nominatim' });
   } catch (e) {
-    return jsonErr('geocoding error: ' + e.message, 500);
+    return jsonOk({ results: [], source: 'error', error: e.message });
   }
 }
 
@@ -103,11 +124,14 @@ async function userOwnsReport(user, reportType) {
   if (!user) return false;
   if (user.role === 'admin') return true;
   const db = await getDb();
-  const p = await db.collection('purchases').findOne({
-    userId: user.id,
-    $or: [{ reportType }, { reportType: 'full-bundle' }],
-    status: 'paid',
-  });
+  const p = await db.collection('purchases').findOne(
+    {
+      userId: user.id,
+      $or: [{ reportType }, { reportType: 'full-bundle' }],
+      status: 'paid',
+    },
+    { projection: { _id: 1 } }
+  );
   return !!p;
 }
 
@@ -181,7 +205,11 @@ async function handleListReports(user) {
   if (!user) return jsonErr('unauthorized', 401);
   const db = await getDb();
   const query = user.role === 'admin' ? {} : { userId: user.id };
-  const docs = await db.collection('reports').find(query).sort({ createdAt: -1 }).limit(100).toArray();
+  const docs = await db.collection('reports')
+    .find(query, { projection: { id: 1, userEmail: 1, reportType: 1, createdAt: 1, birthData: 1 } })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .toArray();
   return jsonOk({ reports: docs.map((d) => ({ id: d.id, userEmail: d.userEmail, reportType: d.reportType, createdAt: d.createdAt, birthData: d.birthData })) });
 }
 
