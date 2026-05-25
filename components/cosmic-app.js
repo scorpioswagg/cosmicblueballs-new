@@ -322,7 +322,7 @@ function ReportTypes({ reportTypes, bundle, onBuy, owned, user, generating }) {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <div className="text-3xl font-bold text-white">${(bundle.price/100).toFixed(2)}</div>
-              <div className="text-xs text-slate-300 line-through">${(reportTypes.length * 9.99).toFixed(2)}</div>
+              <div className="text-xs text-slate-300 line-through">${(reportTypes.reduce((s, r) => s + r.price, 0) / 100).toFixed(2)}</div>
             </div>
             <Button onClick={() => onBuy(bundle.id)} disabled={generating} className="bg-white text-violet-700 hover:bg-slate-100">
               {user?.role === 'admin' ? 'Unlock all' : 'Get the bundle'}
