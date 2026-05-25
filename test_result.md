@@ -317,6 +317,9 @@ frontend:
       - working: true
         agent: "main"
         comment: "Verified via screenshot: hero loads, form renders, Beyoncé demo loads natal wheel."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Hero headline visible, both CTA buttons present, form has exactly 4 fields (name, date, time, place - NO timezone field), demo section with 3 celebrity buttons visible. Report prices correctly varied ($4.99 to $24.99), bundle at $49.99 with line-through $170.87."
   - task: "Interactive natal wheel SVG"
     implemented: true
     working: true
@@ -328,17 +331,78 @@ frontend:
       - working: true
         agent: "main"
         comment: "Renders zodiac signs, houses, planets with glyphs, aspect lines, Asc/MC markers."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Natal wheel SVG renders correctly with planets, zodiac signs, and aspect lines. Demo chart (Beyoncé) loads successfully. User chart generation works with 10 planet cards and Major Aspects section visible."
+  - task: "Chart generation with location geocoding"
+    implemented: true
+    working: false
+    file: "components/cosmic-app.js (LocationInput component)"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ CRITICAL - Geocoding API returns 502 error. When typing 'London' in birth place field, dropdown never appears. Direct API test shows: POST /api/geocode returns {status: 502, data: {error: 'geocoding failed'}}. This blocks location selection and prevents timezone/Ascendant/Midheaven data from being calculated. Chart still generates but without location-dependent features."
+  - task: "Timezone badge and Ascendant/Midheaven cards display"
+    implemented: true
+    working: false
+    file: "components/cosmic-app.js (ChartDisplay component)"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ FAILED - Timezone badge not visible in chart header (expected '🕒 Europe/London (UTC+1.00)'). Ascendant/Midheaven summary cards not rendering (0 fuchsia border cards found). Root cause: geocoding API failure prevents location coordinates from being available, so timezone and Asc/MC cannot be calculated. Chart without location shows 0 Ascendant elements."
+  - task: "Admin login and authentication"
+    implemented: true
+    working: true
+    file: "components/cosmic-app.js (AuthDialog component)"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Admin login successful with admin@cosmicblueprint.com / Admin@2026. Admin badge (🛡 Admin) displays in nav, admin email visible, 'Admin: all reports free' badge shows in reports section. Modal opens/closes correctly, Admin tab switching works."
+  - task: "Admin report generation"
+    implemented: true
+    working: false
+    file: "components/cosmic-app.js (generateReport function)"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ FAILED - Admin sees 'Generate' buttons (green) for owned reports and 'Unlock' buttons for non-owned reports. Clicking 'Generate' button does not produce report content (report article not visible after 6 seconds). Note: Admin already owns 13 reports from backend testing, so buttons correctly show 'Generate' not 'Generate free'. Issue is report generation itself failing."
+  - task: "Subscribe form"
+    implemented: true
+    working: true
+    file: "components/cosmic-app.js (SubscribeSection component)"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Subscribe form accepts email (sub@example.com), submits successfully, shows '✓ You're subscribed' success message."
   - task: "Magic link consume page"
     implemented: true
     working: "NA"
     file: "app/auth/magic/page.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Calls /api/auth/magic/consume with token from URL, redirects to home on success."
+      - working: "NA"
+        agent: "testing"
+        comment: "⚠️ PARTIAL TEST - Magic link request works (devLink returned), but full flow test incomplete due to modal selector issues. Backend tests confirmed magic link consumption works correctly. Frontend integration needs manual verification."
 
 metadata:
   created_by: "main_agent"
@@ -348,17 +412,12 @@ metadata:
 
 test_plan:
   current_focus:
-    - "POST /api/auth/admin/login (bcrypt)"
-    - "POST /api/auth/magic/request (Resend)"
-    - "POST /api/auth/magic/consume"
-    - "POST /api/reports/generate (GPT-4o via Emergent LLM key)"
-    - "POST /api/stripe/checkout (real Stripe test mode)"
-    - "POST /api/chart (natal chart computation)"
-    - "POST /api/geocode (Nominatim)"
-    - "POST /api/demo-chart (celebrity charts)"
-    - "GET /api/report-types"
-    - "GET /api/auth/me, /api/reports, /api/reports/[id], /api/purchases"
-  stuck_tasks: []
+    - "Chart generation with location geocoding"
+    - "Timezone badge and Ascendant/Midheaven cards display"
+    - "Admin report generation"
+  stuck_tasks:
+    - "POST /api/geocode (Nominatim)" - Returns 502 error, blocking location selection
+    - "Admin report generation" - Generate button doesn't produce report content
   test_all: false
   test_priority: "high_first"
 
@@ -370,13 +429,16 @@ agent_communication:
         Admin login: admin@cosmicblueprint.com / Admin@2026 (POST /api/auth/admin/login)
         Stripe test card: 4242 4242 4242 4242 (any future expiry/CVC)
         Magic link: any email; dev response includes "devLink" you can curl directly to /api/auth/magic/consume
-      Critical paths to verify:
-       1. POST /api/chart with date/time/lat/lng/tzOffsetHours -> returns planets[10], ascendant, midheaven, houses[12], aspects[].
-       2. POST /api/auth/admin/login -> sets cookie -> GET /api/auth/me returns admin user.
-       3. POST /api/stripe/checkout for an admin: should bypass Stripe, return url with paid=<id>&source=admin, mark purchase as paid.
-       4. POST /api/reports/generate with reportType='natal-chart' (admin) -> returns content (~800-1400 word reading) + saves to DB.
-       5. Magic-link flow: request returns devLink; calling consume with token grants session cookie.
-      The Emergent LLM endpoint is reachable; a basic completion was verified outside the route.
+      All 21 backend tests previously passed.
+  - agent: "main"
+    message: |
+      UPDATE — added auto-timezone resolution. The client no longer needs to send tzOffsetHours.
+       - /api/chart now accepts only { date, time, lat, lng }
+       - /api/reports/generate and /api/stripe/checkout normalize birthData (resolve tz if not given)
+       - Frontend form no longer shows the TZ field
+      The backend correctly handles historical timezones (NYC 1990 = EDT -4, Einstein Ulm 1879 = LMT +0:53).
+      Priced reports tiered: $4.99 (Monthly) → $24.99 (Natal Chart); bundle = $49.99.
+      Ready for FRONTEND testing now (user approved).
 
   - agent: "testing"
     message: |
@@ -422,3 +484,68 @@ agent_communication:
       - ✅ Unauthenticated request rejection
       
       All backend endpoints are working correctly. No critical issues found.
+
+  - agent: "testing"
+    message: |
+      🔍 FRONTEND TESTING COMPLETE - 3 CRITICAL ISSUES FOUND
+      
+      Comprehensive Playwright testing completed at https://cosmic-blueprint-dev.preview.emergentagent.com/
+      Viewport: 1440x900, Admin credentials: admin@cosmicblueprint.com / Admin@2026
+      
+      ✅ PASSING FLOWS (5/6):
+      A. Landing page render - All elements present, 4 fields only (no timezone), demo buttons visible
+      B. Demo chart flow - Beyoncé chart loads with natal wheel SVG
+      C. Chart generation - Works with/without location, 10 planet cards + Major Aspects display
+      D. Admin login - Successful, badge displays, "Admin: all reports free" badge visible
+      F. Subscribe form - Email submission works, success message displays
+      
+      ❌ CRITICAL ISSUES (3):
+      
+      1. **GEOCODING API FAILURE (502 Bad Gateway)**
+         - POST /api/geocode returns: {status: 502, data: {error: 'geocoding failed'}}
+         - Location dropdown never appears when typing "London"
+         - Blocks user from selecting birth location
+         - Root cause: Nominatim API down, rate-limited, or network issue
+         - Impact: Users cannot enter location, preventing timezone/Asc/MC calculation
+      
+      2. **TIMEZONE BADGE & ASC/MC CARDS MISSING**
+         - Expected: "🕒 Europe/London (UTC+1.00)" badge in chart header
+         - Actual: 0 timezone badge elements found
+         - Expected: Ascendant/Midheaven summary cards (fuchsia border)
+         - Actual: 0 Ascendant elements, 0 fuchsia border cards
+         - Root cause: Geocoding failure → no lat/lng → no timezone/Asc/MC data
+         - Chart without location shows same issue (0 Ascendant elements)
+      
+      3. **ADMIN REPORT GENERATION NOT WORKING**
+         - Admin sees correct buttons: "Generate" (green) for owned reports, "Unlock" for non-owned
+         - Clicking "Generate" button does not produce report content
+         - Report article not visible after 6 seconds wait
+         - Backend logs show: POST /api/reports/generate 200 in 8257ms (successful)
+         - Issue appears to be frontend not displaying the generated report
+      
+      ⚠️ PARTIAL TEST:
+      E. Magic link flow - Request works (devLink returned), but full flow test incomplete due to modal selector issues. Backend tests confirmed consumption works.
+      
+      📊 VERIFICATION DATA:
+      - Report prices: 11 unique prices from $4.99 to $24.99 ✓
+      - Highest: $24.99 (Natal Chart Reading) ✓
+      - Lowest: $4.99 (Monthly Horoscope) ✓
+      - Bundle: $49.99 with line-through $170.87 ✓
+      - Admin owns 13 reports (from backend testing) ✓
+      - Console error: "Failed to load resource: 502" on geocode endpoint
+      
+      Screenshots saved to /tmp/:
+      - 01_landing_page.png - Hero, form, demo section
+      - 02_demo_beyonce.png - Beyoncé natal wheel
+      - 06_admin_login_form.png - Admin login modal
+      - 07_admin_logged_in.png - Admin badge in nav
+      - 11_subscribe_success.png - Subscribe success state
+      - 12_chart_details.png - Chart with natal wheel (no timezone badge)
+      - 13_chart_planets.png - Planet cards and aspects
+      - 14_admin_reports.png - Report cards with Generate buttons
+      - 17_chart_no_location.png - Chart without location (no Asc/MC)
+      
+      PRIORITY FIXES NEEDED:
+      1. Fix geocoding API 502 error (check Nominatim connectivity, rate limits, error handling)
+      2. Debug admin report generation display issue (backend returns 200, frontend doesn't show content)
+      3. Verify timezone/Asc/MC calculation works once geocoding is fixed

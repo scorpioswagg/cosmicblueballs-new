@@ -165,7 +165,6 @@ function ChartForm({ onComputed, initialData }) {
   const [location, setLocation] = useState(initialData?.location || '');
   const [lat, setLat] = useState(initialData?.lat ?? null);
   const [lng, setLng] = useState(initialData?.lng ?? null);
-  const [tzOffset, setTzOffset] = useState(initialData?.tzOffsetHours ?? 0);
   const [loading, setLoading] = useState(false);
 
   async function submit(e) {
@@ -173,10 +172,12 @@ function ChartForm({ onComputed, initialData }) {
     if (!date) { toast.error('Please enter a birth date'); return; }
     setLoading(true);
     try {
-      const r = await fetch('/api/chart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, time: time || null, lat, lng, tzOffsetHours: parseFloat(tzOffset) || 0 }) });
+      const r = await fetch('/api/chart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, time: time || null, lat, lng }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'failed');
-      const birthData = { name, date, time, location, lat, lng, tzOffsetHours: parseFloat(tzOffset) || 0 };
+      const tz = d.chart?.meta?.timezone || null;
+      const tzOffsetHours = d.chart?.meta?.tzOffsetHours ?? 0;
+      const birthData = { name, date, time, location, lat, lng, tz, tzOffsetHours };
       onComputed({ chart: d.chart, birthData });
       toast.success('Chart generated ✨');
     } catch (err) {
@@ -209,15 +210,15 @@ function ChartForm({ onComputed, initialData }) {
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label className="text-slate-200">Time zone offset (hours from UTC)</Label>
-          <Input type="number" step="0.5" value={tzOffset} onChange={(e) => setTzOffset(e.target.value)} placeholder="e.g. -5, 0, 5.5" className="bg-white/5 border-white/15 text-white placeholder:text-slate-500" />
+          <Label className="text-slate-200">Birth place</Label>
+          <LocationInput value={location} onChange={setLocation} onPicked={(p) => { setLocation(p.display_name); setLat(p.lat); setLng(p.lng); }} />
         </div>
       </div>
-      <div className="space-y-1.5">
-        <Label className="text-slate-200">Birth place</Label>
-        <LocationInput value={location} onChange={setLocation} onPicked={(p) => { setLocation(p.display_name); setLat(p.lat); setLng(p.lng); }} />
-        {lat != null && (<p className="text-xs text-slate-400">📍 {lat.toFixed(3)}, {lng.toFixed(3)}</p>)}
-      </div>
+      {lat != null && (
+        <p className="text-xs text-slate-400 flex items-center gap-2">
+          <MapPin className="w-3.5 h-3.5 text-fuchsia-400" /> {lat.toFixed(3)}, {lng.toFixed(3)} — timezone auto-detected from location & date
+        </p>
+      )}
       <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-fuchsia-500 to-violet-500 hover:from-fuchsia-600 hover:to-violet-600 text-white">
         {loading ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Calculating the heavens…</>) : (<><Sparkles className="w-4 h-4 mr-2" /> Generate my chart</>)}
       </Button>
@@ -251,6 +252,11 @@ function ChartDisplay({ chart, birthData }) {
           <CardTitle className="text-white">{birthData?.name ? `${birthData.name}'s Natal Chart` : 'Your Natal Chart'}</CardTitle>
           <CardDescription className="text-slate-300">
             {birthData?.date}{birthData?.time ? ` · ${birthData.time}` : ''}{birthData?.location ? ` · ${birthData.location}` : ''}
+            {chart?.meta?.timezone && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-500/20">
+                🕒 {chart.meta.timezone} (UTC{chart.meta.tzOffsetHours >= 0 ? '+' : ''}{chart.meta.tzOffsetHours.toFixed(2)})
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -640,7 +646,7 @@ function CosmicAppInner() {
         <Card className="bg-white/5 border-white/10 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="text-white">Your birth details</CardTitle>
-            <CardDescription className="text-slate-400">All data stays private. Time zone offset = hours from UTC at birth (e.g. -5 for EST).</CardDescription>
+            <CardDescription className="text-slate-400">All data stays private. We auto-detect your birth timezone from the location & date — no manual offset needed.</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartForm onComputed={({ chart, birthData }) => { setChart(chart); setBirthData(birthData); setTimeout(() => document.getElementById('chart-view')?.scrollIntoView({ behavior: 'smooth' }), 200); }} initialData={birthData} />

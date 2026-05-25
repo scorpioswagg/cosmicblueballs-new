@@ -8,6 +8,7 @@ import { REPORT_TYPES, BUNDLE, getReport, buildReportPrompt } from '@/lib/report
 import { chat } from '@/lib/llm';
 import { sendMagicLinkEmail } from '@/lib/email';
 import { getStripe } from '@/lib/stripe';
+import { resolveBirthTimezone } from '@/lib/timezone';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -75,10 +76,19 @@ async function handleGeocode(body) {
 }
 
 async function handleChart(body) {
-  const { date, time, lat, lng, tzOffsetHours } = body || {};
+  const { date, time, lat, lng } = body || {};
   if (!date) return jsonErr('date is required');
   try {
-    const chart = computeNatalChart({ date, time: time || null, lat, lng, tzOffsetHours: tzOffsetHours ?? 0 });
+    let tz = null, tzOffsetHours = 0;
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      const r = resolveBirthTimezone({ date, time, lat, lng });
+      tz = r.tz;
+      tzOffsetHours = r.offsetHours;
+    } else if (typeof body.tzOffsetHours === 'number') {
+      tzOffsetHours = body.tzOffsetHours;
+    }
+    const chart = computeNatalChart({ date, time: time || null, lat, lng, tzOffsetHours });
+    chart.meta.timezone = tz;
     return jsonOk({ chart });
   } catch (e) {
     return jsonErr('chart computation error: ' + e.message, 500);
@@ -101,8 +111,20 @@ async function userOwnsReport(user, reportType) {
   return !!p;
 }
 
+function normalizeBirthData(bd) {
+  if (!bd || !bd.date) return bd;
+  if (typeof bd.lat === 'number' && typeof bd.lng === 'number' && (bd.tzOffsetHours == null || bd.tz == null)) {
+    const r = resolveBirthTimezone({ date: bd.date, time: bd.time, lat: bd.lat, lng: bd.lng });
+    return { ...bd, tz: r.tz, tzOffsetHours: r.offsetHours, tzAbbrev: r.abbrev, isDST: r.isDST };
+  }
+  return bd;
+}
+
 async function handleGenerateReport(body, user) {
-  const { reportType, birthData, partnerBirthData } = body || {};
+  const { reportType } = body || {};
+  let { birthData, partnerBirthData } = body || {};
+  birthData = normalizeBirthData(birthData);
+  partnerBirthData = partnerBirthData ? normalizeBirthData(partnerBirthData) : null;
   if (!reportType || !getReport(reportType)) return jsonErr('invalid reportType');
   if (!birthData?.date) return jsonErr('birthData.date is required');
 
@@ -261,7 +283,9 @@ async function handleSubscribe(body) {
 
 async function handleStripeCheckout(body, user) {
   if (!user) return jsonErr('Please sign in first', 401);
-  const { reportType, birthData } = body || {};
+  const { reportType } = body || {};
+  let { birthData } = body || {};
+  birthData = normalizeBirthData(birthData);
   if (!reportType) return jsonErr('reportType required');
 
   // Admin bypass: directly mark as paid
