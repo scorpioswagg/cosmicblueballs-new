@@ -338,32 +338,35 @@ async function handleStripeCheckout(body, user) {
   else product = getReport(reportType);
   if (!product) return jsonErr('invalid reportType');
 
-  const stripe = getStripe();
- success_url: `${APP_URL}/dashboard?paid=${reportType}&session_id={CHECKOUT_SESSION_ID}`,
-cancel_url: `${APP_URL}/?canceled=${reportType}`,
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            unit_amount: product.price,
-            product_data: { name: product.name, description: product.blurb },
+const stripe = getStripe();
+
+try {
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency: 'usd',
+          unit_amount: product.price,
+          product_data: {
+            name: product.name,
+            description: product.blurb,
           },
-          quantity: 1,
         },
-      ],
-      success_url: `${base}/dashboard?paid=${reportType}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${base}/?canceled=${reportType}`,
-      customer_email: user.email,
-      metadata: {
-        userId: user.id,
-        userEmail: user.email,
-        reportType,
-        birthData: birthData ? JSON.stringify(birthData) : '',
+        quantity: 1,
       },
+    ],
+    success_url: `${APP_URL}/dashboard?paid=${reportType}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${APP_URL}/?canceled=${reportType}`,
+    customer_email: user.email,
+    metadata: {
+      userId: user.id,
+      userEmail: user.email,
+      reportType,
+      birthData: birthData ? JSON.stringify(birthData) : '',
+    },
+  });
     });
     // Pre-record pending purchase to lock birthData
     const db = await getDb();
