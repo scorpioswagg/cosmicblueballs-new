@@ -33,6 +33,9 @@ dist
 # Environment files (comprehensive coverage)
 *token.json*
 *credentials.json*
+.env
+.env.*
+!.env.example
 .env.local
 .env*.local
 memory/test_credentials.md
