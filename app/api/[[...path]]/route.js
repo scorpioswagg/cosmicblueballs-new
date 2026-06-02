@@ -367,7 +367,7 @@ try {
       birthData: birthData ? JSON.stringify(birthData) : '',
     },
   });
-    });
+   
     // Pre-record pending purchase to lock birthData
     const db = await getDb();
     await db.collection('purchases').insertOne({
