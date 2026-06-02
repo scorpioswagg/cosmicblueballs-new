@@ -357,8 +357,8 @@ try {
         quantity: 1,
       },
     ],
-    success_url: `${APP_URL}/dashboard?paid=${reportType}&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${APP_URL}/?canceled=${reportType}`,
+success_url: `${APP_URL}/dashboard?paid=${reportType}&session_id={CHECKOUT_SESSION_ID}`,
+cancel_url: `${APP_URL}/?canceled=${reportType}`,
     customer_email: user.email,
     metadata: {
       userId: user.id,
