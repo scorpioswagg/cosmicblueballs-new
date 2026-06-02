@@ -9,12 +9,10 @@ import { chat } from '@/lib/llm';
 import { sendMagicLinkEmail } from '@/lib/email';
 import { getStripe } from '@/lib/stripe';
 import { resolveBirthTimezone } from '@/lib/timezone';
-
 const APP_URL =
   process.env.APP_URL ||
-  APP_URL ||
+  process.env.NEXT_PUBLIC_BASE_URL ||
   'http://localhost:3000';
-
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -259,8 +257,7 @@ async function handleMagicRequest(body) {
   const tokenHash = hashToken(plain);
   await tokens.insertOne({ email, tokenHash, createdAt: new Date() });
 
-  const base = APP_URL || 'http://localhost:3000';
-  const link = `${base}/auth/magic?token=${plain}`;
+  const link = `${APP_URL}/auth/magic?token=${plain}`;
   const sent = await sendMagicLinkEmail({ to: email, magicLink: link });
 
   // In dev, also return the magic link for ease of testing
@@ -332,8 +329,7 @@ async function handleStripeCheckout(body, user) {
       },
       { upsert: true }
     );
-    const base = APP_URL || 'http://localhost:3000';
-    return jsonOk({ url: `${base}/dashboard?paid=${reportType}&source=admin` });
+    return jsonOk({ url: `${APP_URL}/dashboard?paid=${reportType}&source=admin` });
   }
 
   // Look up product
@@ -343,7 +339,8 @@ async function handleStripeCheckout(body, user) {
   if (!product) return jsonErr('invalid reportType');
 
   const stripe = getStripe();
-  const base = APP_URL || 'http://localhost:3000';
+ success_url: `${APP_URL}/dashboard?paid=${reportType}&session_id={CHECKOUT_SESSION_ID}`,
+cancel_url: `${APP_URL}/?canceled=${reportType}`,
   try {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
